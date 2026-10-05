@@ -2,7 +2,7 @@
 
 Use this guide after Claude Code Cloud reviews the branch and passes the tests. Enter credentials directly into your local .env, not in a chat.
 
-**New to Hetzner, R2 or Cloudflare? Follow the click-by-click [credentials walkthrough](credentials.md) first.** The sections below are the short reference version.
+**New to Hetzner, R2 or Cloudflare? Follow the click-by-click [credentials walkthrough](credentials.md) first, then the [Termux commands](termux.md) and [DNS steps](dns.md).** The sections below are the short reference version.
 
 ## 1. Choose browser access
 
