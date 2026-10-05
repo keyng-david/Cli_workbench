@@ -1,0 +1,14 @@
+.env
+.env.*
+!.env.example
+.workbench/
+__pycache__/
+*.pyc
+.venv/
+.coverage
+htmlcov/
+test-results/
+*.log
+*.pem
+*.key
+node_modules/
