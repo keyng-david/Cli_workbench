@@ -8,6 +8,7 @@ Version 1 supports Hetzner, Ubuntu 24.04 AMD64, Codex and unmodified CloudCLI. I
 
 ## Documentation
 
+- [Step-by-step credential walkthrough (start here)](docs/credentials.md)
 - [PM setup and credentials](docs/setup.md)
 - [Namecheap, Vercel and DNS](docs/dns.md)
 - [Configuration reference](docs/configuration.md)
