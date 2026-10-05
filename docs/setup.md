@@ -2,6 +2,8 @@
 
 Use this guide after Claude Code Cloud reviews the branch and passes the tests. Enter credentials directly into your local .env, not in a chat.
 
+**New to Hetzner, R2 or Cloudflare? Follow the click-by-click [credentials walkthrough](credentials.md) first.** The sections below are the short reference version.
+
 ## 1. Choose browser access
 
 Recommended daily mode: ACCESS_MODE=cloudflare, with a named tunnel and protected hostname such as agents.keyngdev.com. Browser/PWA use continues independently of Termux after installation. Read [DNS migration](dns.md) before changing nameservers.
