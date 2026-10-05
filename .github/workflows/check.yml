@@ -13,5 +13,14 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y restic shellcheck
       - run: python3 -m unittest discover -s tests -v
       - run: python3 -m compileall -q workbench remote workbench.py
-      - run: bash -n remote/bootstrap.sh
-      - run: shellcheck -e SC1091 remote/bootstrap.sh
+      - run: bash -n remote/bootstrap.sh scripts/smoke-runtime.sh
+      - run: shellcheck -e SC1091 remote/bootstrap.sh scripts/smoke-runtime.sh
+  runtime:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: bash scripts/smoke-runtime.sh
