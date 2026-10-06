@@ -10,8 +10,10 @@ import shutil
 import subprocess
 import tarfile
 import time
+import urllib.error
+import urllib.request
 import uuid
-from .config import Error, REMOTE_KEYS, load
+from .config import Error, REMOTE_KEYS, load, parse_repos
 from .hetzner import Hetzner
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -125,12 +127,41 @@ class Controller:
                         "Upload this key's .pub file in Hetzner (Security > SSH keys), put its ID in .env, then retry")
         print(f"SSH key OK: {path.name} matches Hetzner key {self.cfg['HCLOUD_SSH_KEY_ID']}.")
 
+    def check_github(self):
+        """Free pre-flight: can GH_TOKEN (or no token, for public repos) see every CLONE_REPOS entry?"""
+        repos, token = parse_repos(self.cfg["CLONE_REPOS"]), self.cfg["GH_TOKEN"]
+        if not repos:
+            print("CLONE_REPOS is empty; nothing to clone.")
+            return
+        problems = []
+        for repo in repos:
+            headers = {"Accept": "application/vnd.github+json", "User-Agent": "cli-workbench"}
+            if token:
+                headers["Authorization"] = "Bearer " + token
+            try:
+                with urllib.request.urlopen(urllib.request.Request("https://api.github.com/repos/" + repo, headers=headers), timeout=30) as response:
+                    info = json.loads(response.read())
+                access = "read and write" if info.get("permissions", {}).get("push") else "read only"
+                print(f"OK {repo}: visible, {access}" + ("" if token else " (no GH_TOKEN: public access only)"))
+            except urllib.error.HTTPError as exc:
+                if exc.code == 401:
+                    problems.append(f"{repo}: GH_TOKEN was rejected (typo, expired or revoked)")
+                elif exc.code == 404:
+                    problems.append(f"{repo}: not found" + (" or this token has no access to it. Add the repository to the token's Repository access" if token else ", or it is private and GH_TOKEN is empty"))
+                else:
+                    problems.append(f"{repo}: GitHub returned HTTP {exc.code}")
+            except (urllib.error.URLError, TimeoutError) as exc:
+                raise Error("Could not reach GitHub to check CLONE_REPOS") from exc
+        if problems:
+            raise Error("CLONE_REPOS check failed:\n  " + "\n  ".join(problems))
+
     def start(self):
         server = self.current()
         if server is None:
             if self.state().get("instance") and not self.state().get("id"):
                 raise Error("Previous create outcome is unknown. Inspect Hetzner Console; if no server exists, remove .workbench/<name>/instance.json before retrying")
             self.check_key()
+            self.check_github()
             instance = uuid.uuid4().hex
             write_json(self.state_path, {"instance": instance})
             print("Creating Hetzner server. Billing begins when allocated.", flush=True)
@@ -179,6 +210,15 @@ class Controller:
             if kind == "ready":
                 report("Installed.")
                 notify("Workbench ready", self.cfg["PUBLIC_HOSTNAME"] or "Run tunnel")
+                try:
+                    info = json.loads(self.remote(server, "status"))
+                    for repo in info.get("workspace_repos", []):
+                        print(f"Repo ready: {repo['path']} ({repo.get('branch', '?')}, {repo.get('tracked_files', '?')} files)")
+                    for line in info.get("clone_log", []):
+                        if line.startswith("FAILED"):
+                            print("WARNING " + line)
+                except (Error, ValueError, subprocess.SubprocessError):
+                    pass
                 print("Run status for current service health.")
                 print("https://" + self.cfg["PUBLIC_HOSTNAME"] if self.cfg["ACCESS_MODE"] == "cloudflare" else "Run 'python3 workbench.py tunnel', then open http://localhost:3001")
                 return
@@ -223,7 +263,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="Disposable coding workspaces; see docs/setup.md")
     parser.add_argument("--env", default=".env")
     sub = parser.add_subparsers(dest="command", required=True)
-    for name in ("validate", "start", "status", "logs", "ssh", "tunnel", "login", "resume", "retry-bootstrap", "check-key"):
+    for name in ("validate", "start", "status", "logs", "ssh", "tunnel", "login", "resume", "retry-bootstrap", "check-key", "check-github"):
         sub.add_parser(name)
     backup = sub.add_parser("backup")
     backup.add_argument("--quiesce", action="store_true")
@@ -248,6 +288,9 @@ def main(argv=None):
         ctl = Controller(cfg, state_dir)
         if args.command == "check-key":
             ctl.check_key()
+            return
+        if args.command == "check-github":
+            ctl.check_github()
             return
         if args.command == "start":
             ctl.start()

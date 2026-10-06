@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import pwd
 import re
+import subprocess
 import time
 import urllib.request
 from state import BASE, CONFIG, DEV_HOME, State, dev_run, run
@@ -62,10 +63,20 @@ def main():
         if (target / ".git").exists():
             continue
         stage(f"Cloning {repo} into {target}")
-        try:
-            dev_run(["env", "GIT_TERMINAL_PROMPT=0", "git", "clone", f"https://github.com/{repo}.git", str(target)], cwd="/workspace", timeout=900)
-        except Exception as exc:  # non-fatal: clone it by hand later
-            stage(f"WARNING: could not clone {repo} ({exc}). Check GH_TOKEN access, then clone manually.")
+        result = subprocess.run(
+            ["runuser", "-u", "dev", "--", "env", "HOME=/home/dev", "GIT_TERMINAL_PROMPT=0",
+             "git", "clone", "--", f"https://github.com/{repo}.git", str(target)],
+            cwd="/workspace", stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=900)
+        with (BASE / "clone.log").open("a") as log:
+            if result.returncode:
+                lines = (result.stderr or "").strip().splitlines()
+                reason = lines[-1] if lines else f"exit {result.returncode}"
+                token = cfg.get("GH_TOKEN")
+                reason = reason.replace(token, "***") if token else reason
+                log.write(f"FAILED {repo}: {reason}\n")
+                stage(f"WARNING: could not clone {repo}: {reason}")
+            else:
+                log.write(f"cloned {repo} -> {target}\n")
     unit = """[Unit]
 Description=CLI Workbench CloudCLI
 After=network-online.target

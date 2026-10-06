@@ -257,6 +257,8 @@ def main():
                         except Exception as exc:
                             repos.append({"path": str(directory), "error": str(exc)})
             result["workspace_repos"] = repos
+            clone_log = BASE / "clone.log"
+            result["clone_log"] = clone_log.read_text().splitlines() if clone_log.exists() else []
             if (BASE / "last-backup.json").exists():
                 result["last_backup"] = json.loads((BASE / "last-backup.json").read_text())["snapshot"]
             print(json.dumps(result, indent=2))

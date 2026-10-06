@@ -47,7 +47,15 @@ CLONE_REPOS=keyng-david/mail-builder
 - Use your real GitHub commit email, or your `ID+username@users.noreply.github.com` address from GitHub → Settings → Emails.
 - All four lines are optional. Leave a line empty to skip it.
 
-Then run `python3 workbench.py validate` and `start` as usual. The install log shows `Cloning keyng-david/mail-builder into /workspace/mail-builder`. If a clone fails, the install still finishes and prints a `WARNING` line; it does not block the workbench.
+Then check it for free. This contacts GitHub (not Hetzner), creates nothing, and says whether your token can see each repository:
+
+```bash
+python3 workbench.py check-github
+```
+
+Each repository prints `OK ... visible, read and write`, or a reason such as `not found or this token has no access to it`. A **private repository needs `GH_TOKEN`**. With an empty `GH_TOKEN` only public repositories can be cloned. `start` runs the same check before creating a server and stops if it fails, so a mistake can't cost you a server.
+
+Then run `python3 workbench.py validate` and `start` as usual. The install log shows `Cloning keyng-david/mail-builder into /workspace/mail-builder`. If a clone fails, the install still finishes. `start` prints `Repo ready: /workspace/mail-builder (main, N files)` for each repo that arrived, or a `WARNING FAILED owner/repo: <reason>` line with the real reason from Git. `status` shows the same in `workspace_repos` and `clone_log`.
 
 ## 3. Open the project in CloudCLI
 

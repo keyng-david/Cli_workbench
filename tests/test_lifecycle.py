@@ -131,12 +131,15 @@ class StartProgressTests(unittest.TestCase):
     def test_progress_shows_ssh_reason_stage_and_ready(self):
         with tempfile.TemporaryDirectory() as tmp:
             ctl = self.controller(tmp, [Error("Remote command failed (exit 255): Permission denied (publickey)."),
-                                        "empty", "installing|==> [5/8] Installing CloudCLI", "ready"])
+                                        "empty", "installing|==> [5/8] Installing CloudCLI", "ready",
+                                        '{"workspace_repos": [{"path": "/workspace/x", "branch": "main", "tracked_files": 3}], "clone_log": ["FAILED o/r: nope"]}'])
             text = self.run_start(ctl)
             self.assertIn("SSH not ready yet: Remote command failed (exit 255): Permission denied", text)
             self.assertIn("Uploading installer", text)
             self.assertIn("Installing: [5/8] Installing CloudCLI", text)
             self.assertIn("Installed.", text)
+            self.assertIn("Repo ready: /workspace/x (main, 3 files)", text)
+            self.assertIn("WARNING FAILED o/r: nope", text)
             ctl.deploy.assert_called_once()
 
     def test_server_deleted_externally_gives_clear_error(self):
@@ -174,3 +177,32 @@ class KeyCheckTests(unittest.TestCase):
             ctl.cfg = cfg | {"SSH_PRIVATE_KEY": str(locked)}
             with self.assertRaisesRegex(Error, "passphrase"):
                 ctl.check_key()
+
+
+class GithubCheckTests(unittest.TestCase):
+    def ctl(self, tmp, token, repos="o/r"):
+        cfg = DEFAULTS | {"WORKBENCH_NAME": "test-box", "HCLOUD_TOKEN": "x", "GH_TOKEN": token, "CLONE_REPOS": repos}
+        return Controller(cfg, Path(tmp))
+
+    def http_error(self, code):
+        import urllib.error
+        return urllib.error.HTTPError("u", code, "m", {}, None)
+
+    def test_ok_notokens_and_errors(self):
+        from unittest import mock
+        import contextlib
+        with tempfile.TemporaryDirectory() as tmp:
+            response = mock.MagicMock()
+            response.__enter__.return_value.read.return_value = b'{"permissions": {"push": true}}'
+            with mock.patch("urllib.request.urlopen", return_value=response), contextlib.redirect_stdout(io.StringIO()) as out:
+                self.ctl(tmp, "tok").check_github()
+            self.assertIn("read and write", out.getvalue())
+            with mock.patch("urllib.request.urlopen", side_effect=self.http_error(404)):
+                with self.assertRaisesRegex(Error, "private and GH_TOKEN is empty"):
+                    self.ctl(tmp, "").check_github()
+                with self.assertRaisesRegex(Error, "no access"):
+                    self.ctl(tmp, "tok").check_github()
+            with mock.patch("urllib.request.urlopen", side_effect=self.http_error(401)):
+                with self.assertRaisesRegex(Error, "rejected"):
+                    self.ctl(tmp, "tok").check_github()
+            self.ctl(tmp, "", repos="").check_github()
