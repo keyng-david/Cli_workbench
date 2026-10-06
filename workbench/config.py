@@ -20,6 +20,7 @@ DEFAULTS = {
     "PERSIST_CODEX_AUTH": "false", "AWS_DEFAULT_REGION": "auto",
     "INSTALL_BROWSER": "false", "PLAYWRIGHT_VERSION": "1.55.1",
     "SWAP_MB": "2048", "WAIT_SECONDS": "1200",
+    "GIT_USER_NAME": "", "GIT_USER_EMAIL": "", "CLONE_REPOS": "",
 }
 REQUIRED = {"HCLOUD_TOKEN", "HCLOUD_SSH_KEY_ID", "RESTIC_REPOSITORY",
             "RESTIC_PASSWORD", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"}
@@ -27,6 +28,16 @@ REMOTE_KEYS = (set(DEFAULTS) | REQUIRED) - {
     "HCLOUD_TOKEN", "HCLOUD_SSH_KEY_ID", "SSH_PRIVATE_KEY",
     "HCLOUD_SERVER_TYPE", "HCLOUD_LOCATION", "HCLOUD_IMAGE", "WAIT_SECONDS",
 }
+
+REPO = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9._-]+")
+
+def parse_repos(value):
+    """CLONE_REPOS: comma-separated owner/repo names, validated so they can never act as options."""
+    repos = [item.strip() for item in value.split(",") if item.strip()]
+    for repo in repos:
+        if not REPO.fullmatch(repo) or repo.split("/")[1] in (".", ".."):
+            raise Error(f"CLONE_REPOS entry must look like owner/repo: {repo}")
+    return repos
 
 def read_env(path):
     values = {}
@@ -67,6 +78,7 @@ def load(path, full=True):
     for key, low, high in (("SWAP_MB", 0, 8192), ("WAIT_SECONDS", 30, 7200)):
         if not cfg[key].isdigit() or not low <= int(cfg[key]) <= high:
             raise Error(f"{key} must be between {low} and {high}")
+    parse_repos(cfg["CLONE_REPOS"])
     if cfg["ACCESS_MODE"] not in ("cloudflare", "ssh"):
         raise Error("ACCESS_MODE must be cloudflare or ssh")
     if cfg["RESTORE_MODE"] not in ("fresh", "auto"):

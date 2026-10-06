@@ -32,3 +32,12 @@ class ConfigTests(unittest.TestCase):
                 p.write_text(value)
                 with self.subTest(value=value), self.assertRaises(Error):
                     load(p, full=False)
+
+
+    def test_clone_repos_validation(self):
+        from workbench.config import parse_repos
+        self.assertEqual(parse_repos(" a-b/c.d , e/f_g "), ["a-b/c.d", "e/f_g"])
+        self.assertEqual(parse_repos(""), [])
+        for bad in ("--upload-pack=x/y", "owner/..", "owner", "a/b/c", "own er/repo", "-x/y"):
+            with self.subTest(bad=bad), self.assertRaises(Error):
+                parse_repos(bad)

@@ -13,7 +13,7 @@ CloudCLI's session index points to native provider IDs and transcript paths. Kee
 
 PERSIST_CODEX_AUTH=false excludes only the root Codex auth.json and removes it on restore. It does not promise a credential-free bundle: CloudCLI's DB, configurations and conversations may contain credentials. All backups are encrypted.
 
-Not saved: source repos, project .env files, app databases, dependencies, GitHub CLI login, global Git config, SSH keys, browser profiles/downloads, arbitrary home files, screenshots outside saved state or live processes. Export valuable ignored files/artifacts separately.
+Not saved: source repos, project .env files, app databases, dependencies, GitHub CLI login and global Git config (both are re-created automatically from GH_TOKEN, GIT_USER_NAME and GIT_USER_EMAIL in .env; see [github.md](github.md)), SSH keys, browser profiles/downloads, arbitrary home files, screenshots outside saved state or live processes. Export valuable ignored files/artifacts separately.
 
 ## Backup and normal deletion
 
