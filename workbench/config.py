@@ -20,7 +20,7 @@ DEFAULTS = {
     "PERSIST_CODEX_AUTH": "false", "AWS_DEFAULT_REGION": "auto",
     "INSTALL_BROWSER": "false", "PLAYWRIGHT_VERSION": "1.55.1",
     "SWAP_MB": "2048", "WAIT_SECONDS": "1200",
-    "GIT_USER_NAME": "", "GIT_USER_EMAIL": "", "CLONE_REPOS": "",
+    "RELAX_USERNS_RESTRICTION": "true", "GIT_USER_NAME": "", "GIT_USER_EMAIL": "", "CLONE_REPOS": "",
 }
 REQUIRED = {"HCLOUD_TOKEN", "HCLOUD_SSH_KEY_ID", "RESTIC_REPOSITORY",
             "RESTIC_PASSWORD", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"}
@@ -69,7 +69,7 @@ def load(path, full=True):
         raise Error("WORKBENCH_NAME must be 3-40 lowercase letters, digits or hyphens")
     if cfg["CLOUD_PROVIDER"] != "hetzner" or cfg["AGENTS"] != "codex":
         raise Error("This release implements CLOUD_PROVIDER=hetzner and AGENTS=codex only")
-    for key in ("ACCESS_POLICY_CONFIRMED", "RESTIC_INIT", "PERSIST_CODEX_AUTH", "INSTALL_BROWSER"):
+    for key in ("ACCESS_POLICY_CONFIRMED", "RESTIC_INIT", "PERSIST_CODEX_AUTH", "INSTALL_BROWSER", "RELAX_USERNS_RESTRICTION"):
         if cfg[key] not in ("true", "false"):
             raise Error(f"{key} must be true or false")
     for key in ("CLOUDCLI_VERSION", "CODEX_VERSION", "PNPM_VERSION", "PLAYWRIGHT_VERSION"):

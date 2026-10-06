@@ -105,6 +105,8 @@ When it finishes:
 
 In the web UI's terminal, sign in to GitHub once: `gh auth login --hostname github.com --git-protocol https --web`, then `gh auth setup-git`.
 
+If `login` prints `Software caused connection abort` or `Broken pipe`, your phone's connection dropped (Android put Termux to sleep or the network changed). The device-code sign-in dies with the connection, so run `python3 workbench.py login` again and finish it within 15 minutes. Run `termux-wake-lock` first, and keep Termux open until it says you are signed in.
+
 ## 5. Back up without deleting
 
 ```bash
