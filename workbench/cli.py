@@ -107,11 +107,30 @@ class Controller:
         self.ssh(server, "systemd-run --unit=workbench-bootstrap --collect /bin/bash /opt/cli-workbench/remote/bootstrap.sh")
         print("Bootstrap now runs under systemd and continues if Termux closes.", flush=True)
 
+    def check_key(self):
+        """Free pre-flight: the local private key must match the Hetzner key the server will trust."""
+        path = Path(self.cfg["SSH_PRIVATE_KEY"]).expanduser()
+        try:
+            result = subprocess.run(["ssh-keygen", "-y", "-P", "", "-f", str(path)],
+                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=20)
+        except FileNotFoundError:
+            raise Error("ssh-keygen not found; install OpenSSH (Termux: pkg install openssh)") from None
+        if result.returncode:
+            raise Error(f"Cannot read {path}: it is passphrase-protected or not a valid private key. "
+                        "Create a dedicated key with an EMPTY passphrase (see docs/credentials.md Part B)")
+        local = result.stdout.decode().split()[:2]
+        remote = self.api.ssh_key(self.cfg["HCLOUD_SSH_KEY_ID"]).get("public_key", "").split()[:2]
+        if not local or local != remote:
+            raise Error(f"HCLOUD_SSH_KEY_ID {self.cfg['HCLOUD_SSH_KEY_ID']} is a different key from {path}. "
+                        "Upload this key's .pub file in Hetzner (Security > SSH keys), put its ID in .env, then retry")
+        print(f"SSH key OK: {path.name} matches Hetzner key {self.cfg['HCLOUD_SSH_KEY_ID']}.")
+
     def start(self):
         server = self.current()
         if server is None:
             if self.state().get("instance") and not self.state().get("id"):
                 raise Error("Previous create outcome is unknown. Inspect Hetzner Console; if no server exists, remove .workbench/<name>/instance.json before retrying")
+            self.check_key()
             instance = uuid.uuid4().hex
             write_json(self.state_path, {"instance": instance})
             print("Creating Hetzner server. Billing begins when allocated.", flush=True)
@@ -204,7 +223,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="Disposable coding workspaces; see docs/setup.md")
     parser.add_argument("--env", default=".env")
     sub = parser.add_subparsers(dest="command", required=True)
-    for name in ("validate", "start", "status", "logs", "ssh", "tunnel", "login", "resume", "retry-bootstrap"):
+    for name in ("validate", "start", "status", "logs", "ssh", "tunnel", "login", "resume", "retry-bootstrap", "check-key"):
         sub.add_parser(name)
     backup = sub.add_parser("backup")
     backup.add_argument("--quiesce", action="store_true")
@@ -227,6 +246,9 @@ def main(argv=None):
         except BlockingIOError as exc:
             raise Error("Another controller command is running") from exc
         ctl = Controller(cfg, state_dir)
+        if args.command == "check-key":
+            ctl.check_key()
+            return
         if args.command == "start":
             ctl.start()
             return

@@ -35,6 +35,9 @@ class Hetzner:
             if not page:
                 return results
 
+    def ssh_key(self, key_id):
+        return self.request("GET", f"/ssh_keys/{int(key_id)}")["ssh_key"]
+
     def get(self, server_id):
         return self.request("GET", f"/servers/{int(server_id)}")["server"]
 

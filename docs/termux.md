@@ -51,6 +51,14 @@ Fix whatever it reports, then repeat until it says the configuration is valid.
 
 ## 3. Create the server (billing starts)
 
+First run the free key check. It contacts Hetzner (no server, no cost) and confirms your Termux key is the one Hetzner will install on the server:
+
+```bash
+python3 workbench.py check-key
+```
+
+It must print `SSH key OK`. `start` runs the same check automatically before creating anything.
+
 ```bash
 python3 workbench.py start
 ```
