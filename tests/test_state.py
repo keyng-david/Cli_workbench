@@ -121,3 +121,27 @@ class CodexTmpSymlinkTests(unittest.TestCase):
             (src / "bad").symlink_to("/etc/passwd")
             with self.assertRaisesRegex(RuntimeError, "symlink"):
                 copy_state(src, Path(tmp) / "out2", skip=("tmp",))
+
+
+class CloneTests(unittest.TestCase):
+    def test_clone_success_exists_failure_and_token_redaction(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            origin = tmp / "src" / "demo"
+            origin.mkdir(parents=True)
+            for cmd in (["git", "init", "-q"], ["git", "-c", "user.email=a@b", "-c", "user.name=n", "commit", "-q", "--allow-empty", "-m", "x"]):
+                subprocess.run(cmd, cwd=origin, check=True)
+            workspace = tmp / "ws"
+            workspace.mkdir()
+            cfg = {"CLONE_REPOS": "own/demo,own/missing,--evil/x", "GH_TOKEN": "tok123"}
+            lines = state.clone_repos(cfg, workspace=workspace, log_path=tmp / "log", prefix=(), url=str(tmp / "src") + "/{repo}")
+            self.assertEqual(lines[0][:6], "FAILED")  # own/demo path is src/own/demo, absent
+            self.assertTrue(any(x.startswith("FAILED own/missing") for x in lines))
+            self.assertIn("FAILED --evil/x: not a valid owner/repo name", lines)
+            (tmp / "src" / "own").mkdir()
+            shutil.move(str(origin), str(tmp / "src" / "own" / "demo"))
+            lines = state.clone_repos({"CLONE_REPOS": "own/demo"}, workspace=workspace, log_path=tmp / "log", prefix=(), url=str(tmp / "src") + "/{repo}")
+            self.assertTrue(lines[0].startswith("cloned own/demo"))
+            self.assertTrue((workspace / "demo" / ".git").exists())
+            lines = state.clone_repos({"CLONE_REPOS": "own/demo"}, workspace=workspace, log_path=tmp / "log", prefix=(), url="x")
+            self.assertTrue(lines[0].startswith("exists own/demo"))

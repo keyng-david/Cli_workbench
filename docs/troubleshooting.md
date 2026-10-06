@@ -83,3 +83,22 @@ python3 workbench.py status
 ```
 
 The output has a `workspace_repos` list showing each cloned folder, its branch and the number of tracked files. An empty list means nothing was cloned. Run `python3 workbench.py logs` and look for `Cloning ...` or `WARNING: could not clone ...` lines.
+
+## A repository was not cloned (retry without a new server)
+
+On a running server:
+
+```bash
+python3 workbench.py clone
+```
+
+It retries every `CLONE_REPOS` entry and prints one line per repository: `cloned`, `exists`, or `FAILED owner/repo: <the real reason from Git>`. Then `python3 workbench.py status` should list it under `workspace_repos`.
+
+To see Git's own output instead, open a shell with `python3 workbench.py ssh` and run:
+
+```bash
+git clone https://github.com/OWNER/REPO.git /workspace/REPO
+gh auth status
+```
+
+Common reasons: `Repository not found` (the token does not include that repository), `Authentication failed` (token expired or missing), `could not read Username` (GitHub sign-in did not happen because `GH_TOKEN` was empty when the server was created). `GH_TOKEN` is only applied at server creation, so changing `.env` does not affect a server that is already running.

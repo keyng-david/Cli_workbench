@@ -104,6 +104,38 @@ def verify_manifest(stage, cfg):
             raise RuntimeError("Backup checksum/path validation failed")
     return manifest
 
+def clone_repos(cfg, workspace=WORKSPACE, log_path=None,
+                prefix=("runuser", "-u", "dev", "--", "env", "HOME=/home/dev"),
+                url="https://github.com/{repo}.git"):
+    """Clone every CLONE_REPOS entry as the dev user. Never raises: returns one result line per repo."""
+    import re
+    log_path = log_path or BASE / "clone.log"
+    lines = []
+    for repo in [r.strip() for r in cfg.get("CLONE_REPOS", "").split(",") if r.strip()]:
+        name = repo.partition("/")[2]
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9._-]+", repo) or name in (".", ".."):
+            lines.append(f"FAILED {repo}: not a valid owner/repo name")
+            continue
+        target = workspace / name
+        if (target / ".git").exists():
+            lines.append(f"exists {repo} -> {target}")
+            continue
+        try:
+            result = subprocess.run([*prefix, "GIT_TERMINAL_PROMPT=0", "git", "clone", "--", url.format(repo=repo), str(target)]
+                                    if prefix else ["env", "GIT_TERMINAL_PROMPT=0", "git", "clone", "--", url.format(repo=repo), str(target)],
+                                    cwd=str(workspace), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=900)
+            failed, detail = result.returncode, (result.stderr or "").strip().splitlines()
+        except (OSError, subprocess.SubprocessError) as exc:
+            failed, detail = 1, [str(exc)]
+        if failed:
+            reason = detail[-1] if detail else f"exit {failed}"
+            token = cfg.get("GH_TOKEN")
+            lines.append(f"FAILED {repo}: " + (reason.replace(token, "***") if token else reason))
+        else:
+            lines.append(f"cloned {repo} -> {target}")
+    log_path.write_text("".join(line + "\n" for line in lines))
+    return lines
+
 def git_inventory(root=WORKSPACE, execute=dev_run):
     repositories = []
     if not root.exists():
@@ -217,7 +249,7 @@ class State:
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("action", choices=["restore", "backup", "prepare-destroy", "status", "resume"])
+    parser.add_argument("action", choices=["restore", "backup", "prepare-destroy", "status", "resume", "clone"])
     parser.add_argument("nonce", nargs="?")
     args = parser.parse_args()
     os.umask(0o077)
@@ -228,6 +260,8 @@ def main():
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         if args.action == "restore":
             state.restore()
+        elif args.action == "clone":
+            print("\n".join(clone_repos(cfg)) or "CLONE_REPOS is empty")
         elif args.action == "resume":
             state.services("start")
             print("Services resumed")

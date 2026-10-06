@@ -263,7 +263,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="Disposable coding workspaces; see docs/setup.md")
     parser.add_argument("--env", default=".env")
     sub = parser.add_subparsers(dest="command", required=True)
-    for name in ("validate", "start", "status", "logs", "ssh", "tunnel", "login", "resume", "retry-bootstrap", "check-key", "check-github"):
+    for name in ("validate", "start", "status", "logs", "ssh", "tunnel", "login", "resume", "retry-bootstrap", "check-key", "check-github", "clone"):
         sub.add_parser(name)
     backup = sub.add_parser("backup")
     backup.add_argument("--quiesce", action="store_true")
@@ -308,6 +308,8 @@ def main(argv=None):
             if not args.quiesce:
                 raise Error("Backup stops sessions temporarily; finish work and pass --quiesce")
             print(ctl.remote(server, "backup", uuid.uuid4().hex))
+        elif args.command == "clone":
+            print(ctl.remote(server, "clone"))
         elif args.command == "resume":
             print(ctl.remote(server, "resume"))
         elif args.command == "retry-bootstrap":

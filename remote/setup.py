@@ -4,11 +4,9 @@ import json
 import os
 from pathlib import Path
 import pwd
-import re
-import subprocess
 import time
 import urllib.request
-from state import BASE, CONFIG, DEV_HOME, State, dev_run, run
+from state import BASE, CONFIG, DEV_HOME, State, clone_repos, dev_run, run
 
 def write(path, text, mode=0o600):
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -54,29 +52,8 @@ def main():
         dev_run(["git", "config", "--global", "user.name", cfg["GIT_USER_NAME"]], timeout=30)
     if cfg.get("GIT_USER_EMAIL"):
         dev_run(["git", "config", "--global", "user.email", cfg["GIT_USER_EMAIL"]], timeout=30)
-    for repo in [r.strip() for r in cfg.get("CLONE_REPOS", "").split(",") if r.strip()]:
-        owner, _, name = repo.partition("/")
-        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9._-]+", repo) or name in (".", ".."):
-            stage(f"Skipping invalid CLONE_REPOS entry: {repo}")
-            continue
-        target = Path("/workspace") / name
-        if (target / ".git").exists():
-            continue
-        stage(f"Cloning {repo} into {target}")
-        result = subprocess.run(
-            ["runuser", "-u", "dev", "--", "env", "HOME=/home/dev", "GIT_TERMINAL_PROMPT=0",
-             "git", "clone", "--", f"https://github.com/{repo}.git", str(target)],
-            cwd="/workspace", stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=900)
-        with (BASE / "clone.log").open("a") as log:
-            if result.returncode:
-                lines = (result.stderr or "").strip().splitlines()
-                reason = lines[-1] if lines else f"exit {result.returncode}"
-                token = cfg.get("GH_TOKEN")
-                reason = reason.replace(token, "***") if token else reason
-                log.write(f"FAILED {repo}: {reason}\n")
-                stage(f"WARNING: could not clone {repo}: {reason}")
-            else:
-                log.write(f"cloned {repo} -> {target}\n")
+    for line in clone_repos(cfg):
+        stage(("WARNING: " if line.startswith("FAILED") else "") + line)
     unit = """[Unit]
 Description=CLI Workbench CloudCLI
 After=network-online.target
