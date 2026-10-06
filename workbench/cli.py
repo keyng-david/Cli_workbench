@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import shlex
+import shutil
 import subprocess
 import tarfile
 import time
@@ -37,6 +38,15 @@ def validate_receipt(receipt, server, nonce):
             or receipt.get("verified") is not True
             or len(receipt.get("snapshot", "")) != 64):
         raise Error("Backup receipt is invalid; refusing deletion")
+
+def notify(title, text):
+    """Best-effort Termux notification (needs the termux-api package and app)."""
+    exe = shutil.which("termux-notification")
+    if exe:
+        try:
+            subprocess.run([exe, "--title", title, "--content", text], timeout=10)
+        except (OSError, subprocess.SubprocessError):
+            pass
 
 class Controller:
     def __init__(self, cfg, state_dir):
@@ -73,7 +83,9 @@ class Controller:
                                 stdout=subprocess.PIPE if capture else None,
                                 stderr=subprocess.PIPE if capture else None, timeout=timeout)
         if result.returncode:
-            raise Error(f"Remote command failed (exit {result.returncode}); use logs or administrative SSH for diagnosis")
+            lines = (result.stderr or b"").decode(errors="replace").strip().splitlines()
+            reason = f": {lines[-1]}" if lines else ""
+            raise Error(f"Remote command failed (exit {result.returncode}){reason}")
         return result.stdout.decode() if capture else ""
 
     def remote(self, server, action, *args):
@@ -106,25 +118,60 @@ class Controller:
             server = self.api.create(self.cfg, instance)
             write_json(self.state_path, {"id": server["id"], "instance": instance})
         print(f"Server {server['id']}: waiting for SSH/bootstrap. Re-run start if interrupted.", flush=True)
-        deadline = time.monotonic() + int(self.cfg["WAIT_SECONDS"])
-        deployed = False
+        begin = time.monotonic()
+        deadline = begin + int(self.cfg["WAIT_SECONDS"])
+        deployed, last, last_print = False, None, 0.0
+
+        def report(message):
+            nonlocal last, last_print
+            now = time.monotonic()
+            if message != last or now - last_print >= 30:
+                elapsed = int(now - begin)
+                print(f"[{elapsed // 60:02d}:{elapsed % 60:02d}] {message}", flush=True)
+                last, last_print = message, now
+
+        probe = ("if test -f /var/lib/cli-workbench/ready; then echo ready; "
+                 "elif systemctl is-active --quiet workbench-bootstrap; then echo \"installing|$(journalctl -u workbench-bootstrap -o cat --no-pager 2>/dev/null | grep '^==> ' | tail -1)\"; "
+                 "elif test -f /opt/cli-workbench/config.json; then echo failed; else echo empty; fi")
         while time.monotonic() < deadline:
-            server = self.api.get(server["id"])
-            validate_server(server, self.cfg["WORKBENCH_NAME"], self.state()["instance"])
             try:
-                status = self.ssh(server, "if test -f /var/lib/cli-workbench/ready; then echo ready; elif systemctl is-active --quiet workbench-bootstrap; then echo installing; elif test -f /opt/cli-workbench/config.json; then echo failed; else echo empty; fi", timeout=20).strip()
-            except (Error, subprocess.TimeoutExpired):
+                server = self.api.get(server["id"])
+            except Error as exc:
+                if "HTTP 404" in str(exc):
+                    self.state_path.unlink(missing_ok=True)
+                    raise Error("The server no longer exists (deleted outside this tool). State cleared; run start to create a new one") from None
+                raise
+            validate_server(server, self.cfg["WORKBENCH_NAME"], self.state()["instance"])
+            if server.get("status") != "running":
+                report(f"Hetzner server status: {server.get('status')}")
                 time.sleep(5)
                 continue
-            if status == "ready":
-                print("Installed. Run status for current service health.")
+            try:
+                status = self.ssh(server, probe, timeout=20).strip()
+            except (Error, subprocess.TimeoutExpired) as exc:
+                reason = "timed out" if isinstance(exc, subprocess.TimeoutExpired) else str(exc)
+                hint = ""
+                if time.monotonic() - begin > 180 and "Permission denied" in reason:
+                    hint = " (the SSH key does not match HCLOUD_SSH_KEY_ID; run destroy and fix the key)"
+                report(f"Server is up; SSH not ready yet: {reason}{hint}")
+                time.sleep(5)
+                continue
+            kind, _, detail = status.partition("|")
+            if kind == "ready":
+                report("Installed.")
+                notify("Workbench ready", self.cfg["PUBLIC_HOSTNAME"] or "Run tunnel")
+                print("Run status for current service health.")
                 print("https://" + self.cfg["PUBLIC_HOSTNAME"] if self.cfg["ACCESS_MODE"] == "cloudflare" else "Run 'python3 workbench.py tunnel', then open http://localhost:3001")
                 return
-            if status == "failed":
+            if kind == "failed":
+                notify("Workbench install failed", "Run logs")
                 raise Error("Bootstrap incomplete/failed. Run logs, then retry-bootstrap after fixing the cause")
-            if status == "empty" and not deployed:
+            if kind == "empty" and not deployed:
+                report("SSH connected. Uploading installer...")
                 self.deploy(server)
                 deployed = True
+            elif kind == "installing":
+                report("Installing: " + (detail.replace("==> ", "") or "starting"))
             time.sleep(5)
         raise Error("Startup wait expired; server still bills. Re-run start/status; do not create a duplicate")
 

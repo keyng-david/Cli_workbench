@@ -104,3 +104,45 @@ class LifecycleTests(unittest.TestCase):
             path = Path(tmp) / "instance.json"
             write_json(path, {"id": 1})
             self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+
+
+class StartProgressTests(unittest.TestCase):
+    def controller(self, tmp, statuses):
+        cfg = DEFAULTS | {"WORKBENCH_NAME": "test-box", "HCLOUD_TOKEN": "secret", "WAIT_SECONDS": "60",
+                          "PUBLIC_HOSTNAME": "agents.example.com"}
+        ctl = Controller(cfg, Path(tmp))
+        write_json(ctl.state_path, {"id": 123, "instance": "instance-a"})
+        ctl.api = Mock()
+        ctl.api.servers.return_value = [SERVER]
+        ctl.api.get.return_value = dict(SERVER, status="running")
+        ctl.ssh = Mock(side_effect=statuses)
+        ctl.deploy = Mock()
+        return ctl
+
+    def run_start(self, ctl):
+        import contextlib
+        import time
+        from unittest import mock
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), mock.patch.object(time, "sleep"):
+            ctl.start()
+        return out.getvalue()
+
+    def test_progress_shows_ssh_reason_stage_and_ready(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ctl = self.controller(tmp, [Error("Remote command failed (exit 255): Permission denied (publickey)."),
+                                        "empty", "installing|==> [5/8] Installing CloudCLI", "ready"])
+            text = self.run_start(ctl)
+            self.assertIn("SSH not ready yet: Remote command failed (exit 255): Permission denied", text)
+            self.assertIn("Uploading installer", text)
+            self.assertIn("Installing: [5/8] Installing CloudCLI", text)
+            self.assertIn("Installed.", text)
+            ctl.deploy.assert_called_once()
+
+    def test_server_deleted_externally_gives_clear_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ctl = self.controller(tmp, [])
+            ctl.api.get.side_effect = Error("Hetzner GET /servers/123 returned HTTP 404")
+            with self.assertRaisesRegex(Error, "no longer exists"):
+                self.run_start(ctl)
+            self.assertFalse(ctl.state_path.exists())

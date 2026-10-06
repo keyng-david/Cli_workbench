@@ -15,8 +15,10 @@ if test -f /var/lib/cli-workbench/ready; then
   echo 'Already installed; use resume to start services.'
   exit 0
 fi
+echo '==> [1/8] Installing system packages'
 apt-get update
 apt-get install -y ca-certificates curl gnupg build-essential python3 git gh restic ufw tmux unzip pkg-config
+echo '==> [2/8] Adding Node and Cloudflare package sources'
 install -d -m 0755 /etc/apt/keyrings
 curl --fail --silent --show-error --location https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key -o /tmp/workbench-node-key
 gpg --batch --yes --dearmor -o /etc/apt/keyrings/nodesource.gpg /tmp/workbench-node-key
@@ -25,8 +27,10 @@ echo 'deb [arch=amd64 signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.no
 curl --fail --silent --show-error --location https://pkg.cloudflare.com/cloudflare-main.gpg -o /etc/apt/keyrings/cloudflare-main.gpg
 chmod 0644 /etc/apt/keyrings/cloudflare-main.gpg
 echo 'deb [signed-by=/etc/apt/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared any main' > /etc/apt/sources.list.d/cloudflared.list
+echo '==> [3/8] Installing Node.js and cloudflared'
 apt-get update
 apt-get install -y nodejs cloudflared
+echo '==> [4/8] Creating dev user and workspace'
 id dev >/dev/null 2>&1 || useradd --create-home --shell /bin/bash dev
 install -d -o dev -g dev -m 0755 /workspace
 install -d -o dev -g dev -m 0755 /opt/workbench-packages
