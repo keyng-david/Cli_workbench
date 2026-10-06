@@ -146,3 +146,31 @@ class StartProgressTests(unittest.TestCase):
             with self.assertRaisesRegex(Error, "no longer exists"):
                 self.run_start(ctl)
             self.assertFalse(ctl.state_path.exists())
+
+
+class KeyCheckTests(unittest.TestCase):
+    def test_key_matches_and_mismatch_blocks_creation(self):
+        import shutil
+        import subprocess
+        if not shutil.which("ssh-keygen"):
+            self.skipTest("ssh-keygen not installed")
+        with tempfile.TemporaryDirectory() as tmp:
+            key = Path(tmp) / "k"
+            subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(key)], check=True)
+            pub = (Path(tmp) / "k.pub").read_text().strip()
+            cfg = DEFAULTS | {"WORKBENCH_NAME": "test-box", "HCLOUD_TOKEN": "x", "HCLOUD_SSH_KEY_ID": "5",
+                              "SSH_PRIVATE_KEY": str(key)}
+            ctl = Controller(cfg, Path(tmp))
+            ctl.api = Mock()
+            ctl.api.servers.return_value = []
+            ctl.api.ssh_key.return_value = {"public_key": pub + " termux"}
+            ctl.check_key()
+            ctl.api.ssh_key.return_value = {"public_key": "ssh-ed25519 AAAAdifferent other"}
+            with self.assertRaisesRegex(Error, "different key"):
+                ctl.start()
+            ctl.api.create.assert_not_called()
+            locked = Path(tmp) / "locked"
+            subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "pass", "-f", str(locked)], check=True)
+            ctl.cfg = cfg | {"SSH_PRIVATE_KEY": str(locked)}
+            with self.assertRaisesRegex(Error, "passphrase"):
+                ctl.check_key()
