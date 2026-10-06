@@ -55,7 +55,28 @@ Fix whatever it reports, then repeat until it says the configuration is valid.
 python3 workbench.py start
 ```
 
-It creates the server, uploads the setup, and waits. Installation takes several minutes. After it prints that bootstrap runs under systemd, closing Termux is safe. Run `start` again later to wait for and reconcile the same server. It never creates a duplicate.
+It creates the server, uploads the setup, and then prints a progress line whenever something changes, plus a reminder every 30 seconds so you can see it is alive:
+
+```
+Server 169004814: waiting for SSH/bootstrap. Re-run start if interrupted.
+[00:35] Server is up; SSH not ready yet: Remote command failed (exit 255): Connection refused
+[01:10] SSH connected. Uploading installer...
+[01:25] Installing: [1/8] Installing system packages
+[04:40] Installing: [5/8] Installing CloudCLI and Codex (takes a few minutes)
+[09:15] Installed.
+```
+
+**How long it takes.** Every `start` builds a brand-new server from scratch, so every start repeats the installation. I have not timed a real server yet, so treat this as an estimate: roughly 5 to 15 minutes, mostly stage 1 (system packages) and stage 5 (CloudCLI and Codex download). Please send me your real timings after the first full run. Restoring your history does not shorten it. If the wait ever becomes a nuisance, a saved Hetzner image of a finished server could skip most of it, at the cost of a small monthly storage fee. I have not built that.
+
+**The eight stages** are: 1 system packages, 2 package sources, 3 Node.js and cloudflared, 4 user and workspace, 5 CloudCLI and Codex, 6 backup storage restore/init, 7 services, firewall and swap, 8 start and health check.
+
+**If it prints the same "SSH not ready yet" line for more than about 3 minutes**, read the reason after the colon:
+- `Permission denied (publickey)`: the key on the server is not the one in `SSH_PRIVATE_KEY`. Check that `HCLOUD_SSH_KEY_ID` is the ID of the key you made in Termux, then `destroy` and start again.
+- `Connection refused` or `timed out` for under 3 minutes is normal while the server boots.
+
+**Closing Termux.** After the line `Bootstrap now runs under systemd and continues if Termux closes.` you may leave. To check later: open Termux and run `python3 workbench.py start` again. It does not create a second server; it shows the same progress lines and finishes with the address. Or run `python3 workbench.py logs`. In cloudflare mode, the tunnel turns **Healthy** in the Cloudflare dashboard only at the end, at stage 8. Before then the address shows a Cloudflare error 1033. That is normal and not a fault.
+
+**Optional phone notification when it finishes.** `pkg install termux-api`, then install the free **Termux:API** app from the same source as Termux (F-Droid), and allow notifications. `start` then sends a notification when the install is ready or has failed. Without it, nothing changes.
 
 When it finishes:
 
@@ -120,6 +141,7 @@ python3 workbench.py destroy --discard-unbacked --confirm cli-workbench --confir
 
 ## 7. If `start` is interrupted or the server is "lost"
 
+- If you delete the server yourself in the Hetzner Console while `start` is waiting, `start` now says the server no longer exists and clears its state. Just run `start` again for a new one.
 - Do not run it blindly again until you know what exists. Run `python3 workbench.py status`.
 - Open the Hetzner Console and check **Servers**. If there is one, `start` reconciles it. If an error says the previous create outcome is unknown and the Console shows no server, follow the message (it tells you which state file to remove).
 

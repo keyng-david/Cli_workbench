@@ -20,15 +20,20 @@ def own_dev(path):
         for name in dirs + files:
             os.chown(Path(directory) / name, uid, gid, follow_symlinks=False)
 
+def stage(text):
+    print('==> ' + text, flush=True)
+
 def main():
     cfg = json.loads(CONFIG.read_text())
     packages = [f"@cloudcli-ai/cloudcli@{cfg['CLOUDCLI_VERSION']}",
                 f"@openai/codex@{cfg['CODEX_VERSION']}", f"pnpm@{cfg['PNPM_VERSION']}"]
+    stage('[5/8] Installing CloudCLI and Codex (takes a few minutes)')
     dev_run(["npm", "install", "--prefix", "/opt/workbench-packages", "--no-audit", "--no-fund", *packages], timeout=1800)
     for name in ("cloudcli", "codex", "pnpm"):
         link = Path("/usr/local/bin") / name
         link.unlink(missing_ok=True)
         link.symlink_to(Path("/opt/workbench-packages/node_modules/.bin") / name)
+    stage('[6/8] Restoring/initialising encrypted backup storage')
     state = State(cfg)
     state.restore()
     for name in (".codex", ".cloudcli", ".config/gh"):
@@ -42,6 +47,7 @@ def main():
     if cfg.get("GH_TOKEN"):
         dev_run(["gh", "auth", "login", "--hostname", "github.com", "--git-protocol", "https", "--with-token"], input=cfg["GH_TOKEN"] + "\n", timeout=60)
         dev_run(["gh", "auth", "setup-git"], timeout=30)
+    stage('[7/8] Configuring services, firewall and swap')
     unit = """[Unit]
 Description=CLI Workbench CloudCLI
 After=network-online.target
@@ -112,6 +118,7 @@ WantedBy=multi-user.target
     run(["systemctl", "enable", "workbench-cloudcli"])
     if cfg["ACCESS_MODE"] == "cloudflare":
         run(["systemctl", "enable", "workbench-tunnel"])
+    stage('[8/8] Starting services and waiting for health check')
     state.services("start")
     for _ in range(60):
         try:
