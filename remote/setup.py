@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import pwd
+import re
 import time
 import urllib.request
 from state import BASE, CONFIG, DEV_HOME, State, dev_run, run
@@ -48,6 +49,23 @@ def main():
         dev_run(["gh", "auth", "login", "--hostname", "github.com", "--git-protocol", "https", "--with-token"], input=cfg["GH_TOKEN"] + "\n", timeout=60)
         dev_run(["gh", "auth", "setup-git"], timeout=30)
     stage('[7/8] Configuring services, firewall and swap')
+    if cfg.get("GIT_USER_NAME"):
+        dev_run(["git", "config", "--global", "user.name", cfg["GIT_USER_NAME"]], timeout=30)
+    if cfg.get("GIT_USER_EMAIL"):
+        dev_run(["git", "config", "--global", "user.email", cfg["GIT_USER_EMAIL"]], timeout=30)
+    for repo in [r.strip() for r in cfg.get("CLONE_REPOS", "").split(",") if r.strip()]:
+        owner, _, name = repo.partition("/")
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9._-]+", repo) or name in (".", ".."):
+            stage(f"Skipping invalid CLONE_REPOS entry: {repo}")
+            continue
+        target = Path("/workspace") / name
+        if (target / ".git").exists():
+            continue
+        stage(f"Cloning {repo} into {target}")
+        try:
+            dev_run(["env", "GIT_TERMINAL_PROMPT=0", "git", "clone", f"https://github.com/{repo}.git", str(target)], cwd="/workspace", timeout=900)
+        except Exception as exc:  # non-fatal: clone it by hand later
+            stage(f"WARNING: could not clone {repo} ({exc}). Check GH_TOKEN access, then clone manually.")
     unit = """[Unit]
 Description=CLI Workbench CloudCLI
 After=network-online.target

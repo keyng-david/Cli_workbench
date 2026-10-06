@@ -9,6 +9,7 @@ Version 1 supports Hetzner, Ubuntu 24.04 AMD64, Codex and unmodified CloudCLI. I
 ## Documentation
 
 - [Step-by-step credential walkthrough (start here)](docs/credentials.md)
+- [GitHub sign-in, Git identity and getting your code onto the server](docs/github.md)
 - [Termux command guide, including deleting the server](docs/termux.md)
 - [PM setup and credentials](docs/setup.md)
 - [Domain and DNS, step by step](docs/dns.md)
