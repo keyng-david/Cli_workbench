@@ -116,6 +116,14 @@ WantedBy=multi-user.target
     run(["ufw", "default", "allow", "outgoing"])
     run(["ufw", "allow", "from", cfg["SSH_SOURCE_CIDR"], "to", "any", "port", "22", "proto", "tcp"])
     run(["ufw", "--force", "enable"])
+    if cfg.get("RELAX_USERNS_RESTRICTION", "true") == "true":
+        # Ubuntu 24.04 blocks Codex's bubblewrap sandbox ("bwrap: loopback: Failed RTM_NEWADDR")
+        # unless unprivileged user namespaces are allowed. Applies to this disposable single-purpose VM only.
+        write(Path("/etc/sysctl.d/60-workbench-userns.conf"), "kernel.apparmor_restrict_unprivileged_userns=0\n", 0o644)
+        try:
+            run(["sysctl", "--system"])
+        except RuntimeError:
+            stage("WARNING: could not apply the user-namespace setting; Codex sandbox may fail")
     swap = int(cfg["SWAP_MB"])
     if swap:
         if not Path("/swapfile").exists():

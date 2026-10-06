@@ -61,3 +61,25 @@ Use the exact numeric ID. This deliberately bypasses backup/Git checks and loses
 - Version mismatch: restore using the snapshot's versions, then test upgrades separately.
 - Sessions but missing source: clone to the original /workspace path and restore the branch.
 - Notifications after restore: verify Access, Android permissions and push subscription, and record whether resubscription is needed.
+
+## Codex says `bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted`
+
+Codex runs its commands inside a small sandbox (bubblewrap). Ubuntu 24.04 blocks that by default through an AppArmor setting, `kernel.apparmor_restrict_unprivileged_userns=1`, so every command fails before it runs. This is a known Codex-on-Ubuntu-24.04 problem, not a problem with your repository.
+
+New servers fix it automatically: the installer writes `/etc/sysctl.d/60-workbench-userns.conf` with `kernel.apparmor_restrict_unprivileged_userns=0`. That is controlled by `RELAX_USERNS_RESTRICTION=true` in `.env` (the default).
+
+The trade-off: it relaxes a kernel hardening setting on the whole server, so programs run by the `dev` user can use user namespaces. The server is disposable and single-purpose, so I accept that. If you prefer to keep the setting, use `RELAX_USERNS_RESTRICTION=false`, but then Codex commands will fail unless you change Codex's own sandbox setting in `~/.codex/config.toml`, which removes the sandbox instead.
+
+Servers created before this fix need a new server. To verify on a server, open `python3 workbench.py ssh` and run `bwrap --unshare-net --ro-bind / / /bin/true`; no output means it works.
+
+## Destroy or backup says `State symlink needs manual review: apply_patch`
+
+Codex creates temporary links in `~/.codex/tmp`. The backup used to refuse any link, which blocked a normal destroy. The backup now skips `~/.codex/tmp` (temporary data) and still refuses links anywhere else. If you still see this message for another name, the server is not deleted and keeps billing. Look at the named path, and if you do not need the server's data use the emergency delete in [termux.md](termux.md) section 6.
+
+## How do I check that my repositories were cloned?
+
+```bash
+python3 workbench.py status
+```
+
+The output has a `workspace_repos` list showing each cloned folder, its branch and the number of tracked files. An empty list means nothing was cloned. Run `python3 workbench.py logs` and look for `Cloning ...` or `WARNING: could not clone ...` lines.

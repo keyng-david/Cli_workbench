@@ -37,7 +37,7 @@ def file_hash(path):
             digest.update(chunk)
     return digest.hexdigest()
 
-def copy_state(source, target, exclude_auth=False):
+def copy_state(source, target, exclude_auth=False, skip=()):
     """Copy regular state and snapshot SQLite through backup(), including WAL."""
     target.mkdir(parents=True, exist_ok=True)
     if not source.exists():
@@ -46,6 +46,8 @@ def copy_state(source, target, exclude_auth=False):
         raise RuntimeError("State root must not be a symlink")
     for entry in sorted(source.iterdir()):
         if exclude_auth and entry.name == "auth.json":
+            continue
+        if entry.name in skip:
             continue
         if entry.is_symlink():
             raise RuntimeError(f"State symlink needs manual review: {entry.name}")
@@ -193,7 +195,7 @@ class State:
             if stage.exists():
                 shutil.rmtree(stage)
             stage.mkdir(mode=0o700)
-            copy_state(DEV_HOME / ".codex", stage / "codex", self.cfg["PERSIST_CODEX_AUTH"] != "true")
+            copy_state(DEV_HOME / ".codex", stage / "codex", self.cfg["PERSIST_CODEX_AUTH"] != "true", skip=("tmp",))
             copy_state(DEV_HOME / ".cloudcli", stage / "cloudcli")
             (stage / "projects.json").write_text(json.dumps(inventory, indent=2))
             make_manifest(stage, self.cfg)
@@ -243,6 +245,18 @@ def main():
                     result["cloudcli_health"] = response.status
             except Exception:
                 result["cloudcli_health"] = "unreachable"
+            repos = []
+            if WORKSPACE.exists():
+                for directory in sorted(WORKSPACE.iterdir()):
+                    if (directory / ".git").exists():
+                        try:
+                            git = ["git", "-C", str(directory)]
+                            repos.append({"path": str(directory),
+                                          "branch": dev_run(git + ["rev-parse", "--abbrev-ref", "HEAD"]).strip(),
+                                          "tracked_files": len(dev_run(git + ["ls-files"]).splitlines())})
+                        except Exception as exc:
+                            repos.append({"path": str(directory), "error": str(exc)})
+            result["workspace_repos"] = repos
             if (BASE / "last-backup.json").exists():
                 result["last_backup"] = json.loads((BASE / "last-backup.json").read_text())["snapshot"]
             print(json.dumps(result, indent=2))

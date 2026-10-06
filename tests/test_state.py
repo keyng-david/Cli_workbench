@@ -103,3 +103,21 @@ class StateTests(unittest.TestCase):
             git("-C", repo, "stash")
             with self.assertRaisesRegex(RuntimeError, "stashes"):
                 state.git_inventory(root / "workspace", execute)
+
+
+class CodexTmpSymlinkTests(unittest.TestCase):
+    def test_codex_tmp_symlinks_are_skipped_but_other_symlinks_still_block(self):
+        import tempfile
+        from pathlib import Path
+        copy_state = state.copy_state
+        with tempfile.TemporaryDirectory() as tmp:
+            src, dst = Path(tmp) / "codex", Path(tmp) / "out"
+            (src / "tmp" / "arg0" / "x").mkdir(parents=True)
+            (src / "tmp" / "arg0" / "x" / "apply_patch").symlink_to("/bin/true")
+            (src / "history.jsonl").write_text("{}")
+            copy_state(src, dst, skip=("tmp",))
+            self.assertTrue((dst / "history.jsonl").exists())
+            self.assertFalse((dst / "tmp").exists())
+            (src / "bad").symlink_to("/etc/passwd")
+            with self.assertRaisesRegex(RuntimeError, "symlink"):
+                copy_state(src, Path(tmp) / "out2", skip=("tmp",))
